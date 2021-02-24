@@ -284,7 +284,7 @@
               </v-list-item-content>
             </v-list-item>
 
-            <v-list-item key="edit" @click="userDialog = true">
+            <v-list-item key="edit" @click="userDialog = true" v-if="user.admin">
               <v-list-item-icon>
                 <v-icon>mdi-pencil</v-icon>
               </v-list-item-icon>
@@ -294,7 +294,7 @@
               </v-list-item-content>
             </v-list-item>
 
-            <v-list-item key="password" @click="passwordDialog = true">
+            <v-list-item key="password" @click="passwordDialog = true" v-if="user.admin">
               <v-list-item-icon>
                 <v-icon>mdi-lock</v-icon>
               </v-list-item-icon>
