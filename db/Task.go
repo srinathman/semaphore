@@ -49,6 +49,8 @@ type Task struct {
 	// This field available only for Build tasks.
 	Version *string `db:"version" json:"version"`
 
+	IncomingVersion *string `db:"incoming_version" json:"incoming_version"`
+
 	Arguments *string `db:"arguments" json:"arguments"`
 }
 
@@ -87,6 +89,9 @@ func (task *Task) ValidateNewTask(template Template) error {
 func (task *TaskWithTpl) Fill(d Store) error {
 	if task.BuildTaskID != nil {
 		build, err := d.GetTask(task.ProjectID, *task.BuildTaskID)
+		if err == ErrNotFound {
+			return nil
+		}
 		if err != nil {
 			return err
 		}
