@@ -18,7 +18,7 @@ var (
 	longtextRE        = regexp.MustCompile(`(?i)\blongtext\b`)
 	ifExistsRE        = regexp.MustCompile(`(?i)\bif exists\b`)
 	changeRE          = regexp.MustCompile(`^alter table \x60(\w+)\x60 change \x60(\w+)\x60 \x60(\w+)\x60 ([\w\(\)]+)( not null)?$`)
-	dropForeignKeyRE  = regexp.MustCompile(`^alter table \x60(\w+)\x60 drop foreign key \x60(\w+)\x60 /\* postgres:\x60(\w+)\x60 \*/$`)
+	dropForeignKeyRE  = regexp.MustCompile(`^alter table \x60(\w+)\x60 drop foreign key \x60(\w+)\x60 /\* postgres:\x60(\w*)\x60 mysql:\x60(\w*)\x60 \*/$`)
 	dropForeignKey2RE = regexp.MustCompile(`(?i)\bdrop foreign key\b`)
 )
 
@@ -51,6 +51,22 @@ func getVersionSQL(path string) (queries []string) {
 func (d *SqlDb) prepareMigration(query string) string {
 	switch d.sql.Dialect.(type) {
 	case gorp.MySQLDialect:
+		mysqlFullVersion, err := d.sql.SelectStr("select version()")
+		if err == nil && strings.Contains(mysqlFullVersion, "MariaDB") {
+			// Actions for MariaDB only
+		} else {
+			// Actions for MySQL only
+			m := dropForeignKeyRE.FindStringSubmatch(query)
+			if m != nil {
+				tableName := m[1]
+				foreignKeyNameMySQL := m[4]
+				if foreignKeyNameMySQL == "" {
+					query = ""
+				} else {
+					query = "alter table `" + tableName + "` drop constraint `" + foreignKeyNameMySQL + "`"
+				}
+			}
+		}
 		query = autoIncrementRE.ReplaceAllString(query, "auto_increment")
 		query = ifExistsRE.ReplaceAllString(query, "")
 	case gorp.PostgresDialect:
@@ -133,6 +149,9 @@ func (d *SqlDb) ApplyMigration(migration db.Migration) error {
 	if !initialized {
 		fmt.Println("Creating migrations table")
 		query := d.prepareMigration(initialSQL)
+		if query == "" {
+			return nil
+		}
 		_, err = d.exec(query)
 		if err != nil {
 			return err
@@ -153,6 +172,10 @@ func (d *SqlDb) ApplyMigration(migration db.Migration) error {
 		}
 
 		q := d.prepareMigration(query)
+		if q == "" {
+			continue
+		}
+
 		_, err = tx.Exec(q)
 		if err != nil {
 			handleRollbackError(tx.Rollback())
@@ -191,11 +214,14 @@ func (d *SqlDb) TryRollbackMigration(version db.Migration) {
 		return
 	}
 
-	query := getVersionSQL(getVersionErrPath(version))
-	for _, query := range query {
+	queries := getVersionSQL(getVersionErrPath(version))
+	for _, query := range queries {
 		fmt.Printf(" [ROLLBACK] > %v\n", query)
-
-		if _, err := d.exec(d.prepareMigration(query)); err != nil {
+		q := d.prepareMigration(query)
+		if q == "" {
+			continue
+		}
+		if _, err := d.exec(q); err != nil {
 			fmt.Println(" [ROLLBACK] - Stopping")
 			return
 		}
